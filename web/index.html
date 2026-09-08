@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Clinic Booking Line</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: #0b0d12; color: #e6e8ec;
+    font: 15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: #8a8f98; margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1000px; }
+  .card {
+    background: #141821; border: 1px solid #232936; border-radius: 10px;
+    padding: 16px;
+  }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #8a8f98; margin: 0 0 12px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #1a2e22; color: #4ade80; border: 1px solid #2a4a36;
+    padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  }
+  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
+  .fencing-off .badge { background: #331a1a; color: #f87171; border-color: #4a2a2a; }
+  .fencing-off .badge::before { background: #f87171; }
+  .booking { font-size: 22px; font-weight: 700; }
+  .booking.empty { font-size: 15px; font-weight: 400; color: #8a8f98; }
+  .log { max-height: 220px; overflow-y: auto; font-size: 13px; }
+  .log-row { padding: 8px 0; border-bottom: 1px solid #1c2230; }
+  .log-row:last-child { border-bottom: none; }
+  .log-row .meta { color: #8a8f98; font-size: 11px; }
+  .interrupted { color: #f59e0b; }
+  .fenced-desc { color: #f87171; }
+  .controls { margin: 20px 0; }
+  button {
+    background: #dc2626; color: white; border: none; padding: 10px 20px;
+    border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { background: #3a3a3a; cursor: default; }
+  #callStatus { margin-left: 12px; color: #8a8f98; font-size: 13px; }
+  .empty-hint { color: #565b66; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Clinic Booking Line</h1>
+  <p class="sub">Voice-only appointment booking. Speak after connecting.</p>
+
+  <div class="controls">
+    <button id="connectBtn">Connect mic</button>
+    <span id="callStatus">not connected</span>
+  </div>
+
+  <div id="providerRow" class="fencing-on" style="margin-bottom: 16px;">
+    <span class="badge" id="providerBadge">Speech provider: Rime (coda)</span>
+    <span class="badge" id="fencingBadge" style="margin-left: 8px;">Fencing: on</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Current booking</h2>
+      <div id="booking" class="booking empty">No booking yet</div>
+    </div>
+
+    <div class="card">
+      <h2>Barge-in latency</h2>
+      <div id="timing" class="empty-hint">No interruption yet</div>
+    </div>
+
+    <div class="card">
+      <h2>Fenced events (dropped stale results)</h2>
+      <div id="fencedLog" class="log"><div class="empty-hint">None yet</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Spoken log (what the caller actually heard)</h2>
+      <div id="spokenLog" class="log"><div class="empty-hint">None yet</div></div>
+    </div>
+  </div>
+
+<script>
+const el = (id) => document.getElementById(id);
+
+function fmtTime(ts) {
+  return new Date(ts * 1000).toLocaleTimeString();
+}
+
+function renderState(s) {
+  el("providerBadge").textContent = "Speech provider: " + s.provider;
+
+  const fencingBadge = el("fencingBadge");
+  fencingBadge.textContent = "Fencing: " + (s.fencing_enabled ? "on" : "off");
+  el("providerRow").className = s.fencing_enabled ? "fencing-on" : "fencing-off";
+
+  const booking = el("booking");
+  if (s.booking) {
+    booking.textContent = `${s.booking.day} at ${s.booking.time}`;
+    booking.classList.remove("empty");
+  } else {
+    booking.textContent = "No booking yet";
+    booking.classList.add("empty");
+  }
+
+  const timing = el("timing");
+  if (s.timing_events && s.timing_events.length) {
+    const last = s.timing_events[s.timing_events.length - 1];
+    timing.textContent = `${last.barge_in_latency_ms.toFixed(0)} ms (audio stopped after interrupt)`;
+    timing.className = "";
+  }
+
+  const fencedLog = el("fencedLog");
+  fencedLog.innerHTML = (s.fenced_events && s.fenced_events.length)
+    ? s.fenced_events.map(e => `<div class="log-row"><div class="fenced-desc">${e.description}</div><div class="meta">${fmtTime(e.ts)}</div></div>`).join("")
+    : '<div class="empty-hint">None yet</div>';
+
+  const spokenLog = el("spokenLog");
+  spokenLog.innerHTML = (s.spoken_log && s.spoken_log.length)
+    ? s.spoken_log.map(e => `<div class="log-row"><div class="${e.interrupted ? 'interrupted' : ''}">${e.text}${e.interrupted ? ' (cut off)' : ''}</div><div class="meta">${fmtTime(e.ts)}</div></div>`).join("")
+    : '<div class="empty-hint">None yet</div>';
+}
+
+async function pollState() {
+  try {
+    const res = await fetch("/api/state");
+    renderState(await res.json());
+  } catch (e) {
+    console.error("state poll failed", e);
+  }
+  setTimeout(pollState, 500);
+}
+pollState();
+
+let room = null;
+
+async function connect() {
+  const btn = el("connectBtn");
+  const status = el("callStatus");
+  btn.disabled = true;
+  status.textContent = "requesting token...";
+
+  // A stale connection left over from a previous click (without a page
+  // reload) would otherwise join a second identity into the same room --
+  // the room then never gets recreated, so no new agent job is dispatched
+  // to it and the new connection silently gets no agent.
+  if (room) {
+    await room.disconnect();
+    room = null;
+  }
+
+  try {
+    const tokenRes = await fetch("/api/token");
+    const tokenData = await tokenRes.json();
+    if (tokenData.error) {
+      status.textContent = "error: " + tokenData.error;
+      btn.disabled = false;
+      return;
+    }
+
+    if (typeof LivekitClient === "undefined") {
+      throw new Error("livekit-client failed to load from CDN (check network/ad-blocker)");
+    }
+
+    room = new LivekitClient.Room();
+
+    // Connecting to the room does not auto-play remote audio -- each
+    // subscribed track has to be explicitly attached to a playable element.
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind === LivekitClient.Track.Kind.Audio) {
+        const el = track.attach();
+        el.id = "agentAudio";
+        document.body.appendChild(el);
+      }
+    });
+    room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+      track.detach().forEach((el) => el.remove());
+    });
+
+    status.textContent = "connecting...";
+    await room.connect(tokenData.url, tokenData.token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    status.textContent = "connected — speak now";
+
+    room.on(LivekitClient.RoomEvent.Disconnected, () => {
+      status.textContent = "disconnected";
+      btn.disabled = false;
+    });
+  } catch (e) {
+    console.error("connect failed", e);
+    status.textContent = "error: " + e.message;
+    btn.disabled = false;
+  }
+}
+
+el("connectBtn").addEventListener("click", connect);
+</script>
+</body>
+</html>

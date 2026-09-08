@@ -1,0 +1,6 @@
+# Pinned to what was verified against the installed SDK during build (2026-09-08).
+# Introspect with: python -c "import livekit.agents; print(livekit.agents.__version__)"
+livekit-agents[silero,deepgram,groq,rime]~=1.8
+python-dotenv~=1.0
+aiohttp~=3.10
+livekit-api~=0.8
