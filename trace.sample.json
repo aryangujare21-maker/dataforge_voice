@@ -1,0 +1,138 @@
+{
+  "lookup_delay_seconds": 1.5,
+  "barge_in_at_seconds": 0.75,
+  "fenced": {
+    "fencing_enabled": true,
+    "events": [
+      {
+        "event": "call_start",
+        "t_ms": 0,
+        "caller_said": "I need an appointment Thursday."
+      },
+      {
+        "event": "barge_in",
+        "t_ms": 762,
+        "caller_said": "actually make it Friday."
+      },
+      {
+        "event": "thursday_lookup_fenced",
+        "t_ms": 1515,
+        "note": "dropped: superseded by generation bump"
+      },
+      {
+        "event": "friday_lookup_resolved",
+        "t_ms": 3023,
+        "slots": [
+          {
+            "id": "fri-1100",
+            "day": "Friday",
+            "time": "11:00 AM"
+          },
+          {
+            "id": "fri-1515",
+            "day": "Friday",
+            "time": "3:15 PM"
+          }
+        ]
+      },
+      {
+        "event": "booked",
+        "t_ms": 3025,
+        "slot": {
+          "id": "fri-1100",
+          "day": "Friday",
+          "time": "11:00 AM"
+        }
+      }
+    ],
+    "final_booking": {
+      "slot_id": "fri-1100",
+      "day": "Friday",
+      "time": "11:00 AM",
+      "ts": 1788987265.2610276
+    },
+    "fenced_events": [
+      {
+        "description": "dropped stale check_availability('Thursday') from generation 0, now at generation 1",
+        "ts": 1788987263.7509296
+      }
+    ],
+    "spoken_log": [
+      {
+        "text": "Thursday at 2, Thursday at 4:3",
+        "interrupted": true,
+        "ts": 1788987263.00026
+      }
+    ]
+  },
+  "unfenced": {
+    "fencing_enabled": false,
+    "events": [
+      {
+        "event": "call_start",
+        "t_ms": 0,
+        "caller_said": "I need an appointment Thursday."
+      },
+      {
+        "event": "barge_in",
+        "t_ms": 754,
+        "caller_said": "actually make it Friday."
+      },
+      {
+        "event": "thursday_lookup_resolved",
+        "t_ms": 1501,
+        "slots": [
+          {
+            "id": "thu-1400",
+            "day": "Thursday",
+            "time": "2:00 PM"
+          },
+          {
+            "id": "thu-1630",
+            "day": "Thursday",
+            "time": "4:30 PM"
+          }
+        ]
+      },
+      {
+        "event": "friday_lookup_resolved",
+        "t_ms": 3013,
+        "slots": [
+          {
+            "id": "fri-1100",
+            "day": "Friday",
+            "time": "11:00 AM"
+          },
+          {
+            "id": "fri-1515",
+            "day": "Friday",
+            "time": "3:15 PM"
+          }
+        ]
+      },
+      {
+        "event": "booked",
+        "t_ms": 3014,
+        "slot": {
+          "id": "thu-1400",
+          "day": "Thursday",
+          "time": "2:00 PM"
+        }
+      }
+    ],
+    "final_booking": {
+      "slot_id": "thu-1400",
+      "day": "Thursday",
+      "time": "2:00 PM",
+      "ts": 1788987268.2770243
+    },
+    "fenced_events": [],
+    "spoken_log": [
+      {
+        "text": "Thursday at 2, Thursday at 4:3",
+        "interrupted": true,
+        "ts": 1788987266.01766
+      }
+    ]
+  }
+}

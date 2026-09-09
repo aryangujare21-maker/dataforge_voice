@@ -135,6 +135,8 @@ Open `http://localhost:8080`, click **Connect mic**, and talk.
 Runs the stress scenario twice — once with fencing on, once off — using the
 exact same `tools.fenced_check_availability` coroutine `agent.py` calls live.
 Prints a PASS/FAIL line and writes a full timestamped trace to `trace.json`.
+A reference copy of that output is committed as `trace.sample.json`, so the
+result can be inspected without running anything.
 
 ## Bugs found getting the live pipeline working
 

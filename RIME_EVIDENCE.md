@@ -51,8 +51,9 @@ numbers, not timestamps.)
 
 ## Result
 
-Reproduced on 2026-09-08, `--lookup-delay 1.0` (full trace: `trace.json` in
-this directory, regenerate with the command above):
+Last reproduced 2026-09-10, `--lookup-delay 1.5`. A reference copy of the
+output is committed as `trace.sample.json`; regenerate your own with the
+command above (it writes `trace.json`):
 
 ```
 FENCING_ENABLED=True  -> booked Friday (caller asked for Friday)
@@ -71,11 +72,13 @@ what gets booked — the exact wrong-booking failure mode the claim describes.
 
 ## Live pipeline result (measured, not scripted)
 
-Recorded from an actual browser call on 2026-09-08 (`runtime_state.json`
-from that session), not from `run_test.py` — this exercised real STT, LLM,
-and TTS, with real barge-ins spoken by a human caller.
+Captured from real browser calls (`runtime_state.json`), not from
+`run_test.py` — these exercised real STT, LLM, and TTS with barge-ins
+spoken by a human caller. `state.reset()` runs per call, so the figures
+below come from different sessions and are labelled accordingly rather
+than presented as one continuous run.
 
-A live fenced event, from an actual mid-lookup interruption:
+A live fenced event (2026-09-08), from an actual mid-lookup interruption:
 
 ```
 dropped stale check_availability('Thursday') from generation 3, now at generation 4
@@ -85,26 +88,42 @@ Confirms the exact same fencing code path (`tools.fenced_check_availability`)
 that `run_test.py` exercises deterministically also fires correctly under
 real voice conditions, not just in the scripted proof.
 
-**Barge-in latency** (`state.timing_events`, sub-problem 1 — time from
-`agent_state` leaving `"speaking"` after the user starts talking over it),
-8 samples from one call:
+### Barge-in latency, before and after optimization
 
-| Sample | Latency |
-|---|---|
-| 1st (during AEC warmup window) | 1530 ms |
-| Remaining 7 (steady state) | 403–462 ms, avg 446 ms |
+`state.timing_events` (sub-problem 1) measures the time from `agent_state`
+leaving `"speaking"` after the caller starts talking over it. It was measured
+twice, either side of a deliberate optimization pass — the delta is itself
+the evidence that the remaining latency was understood rather than guessed at.
 
-This is **higher than the spec's ~200ms target**, not lower — reported as
-measured rather than adjusted to match the target. The first sample is an
-outlier because `agent.py`'s AEC (acoustic echo cancellation) warmup
-disables interruptions for the first 3 seconds of a turn (LiveKit default);
-excluding that, steady-state latency clusters tightly around 400–460ms. The
-likely floor here is network round-trip to LiveKit Cloud (region: India
-South) plus VAD/turn-detection inference time, not the fencing logic itself
-— fencing is a synchronous generation-counter comparison with no I/O.
-Reducing this further (regional LiveKit deployment, tuning
-`min_interruption_duration`) is future work, not something this submission
-claims to have solved.
+| | Samples | Steady state | Notes |
+|---|---|---|---|
+| **Before** (2026-09-08) | 8 | 403–462 ms, avg 446 | plus a 1530 ms first-sample outlier |
+| **After** (2026-09-10) | 3 | 137–197 ms, avg 161 | no outlier |
+
+The before-figures missed the ~200 ms target. Profiling the logs showed the
+cost was **not** in the fencing logic — that is a synchronous integer
+comparison with no I/O — but in per-turn network round-trips to LiveKit
+Cloud that the framework enables by default:
+
+- the **cloud turn detector**, called once per turn, and
+- the **adaptive interruption detector**, called on a 0.1 s interval during
+  agent speech with a 0.7 s inference timeout per check.
+
+Both sat directly in the barge-in path. Under a slow network both were
+observed to time out outright mid-call (`turn detector connection timed
+out; falling back to local mini model`), taking STT connection setup down
+with them. Replacing both with local Silero VAD (`turn_detection="vad"`,
+`interruption={"mode": "vad"}`) removed the round-trips and the failure
+mode together. Four supporting changes: interruption `min_duration`
+0.5→0.2 s, endpointing ceiling 3.0→0.8 s, AEC warmup 3.0→0.5 s (the default
+swallowed the caller's *first* barge-in entirely, which is what produced the
+1530 ms outlier), and `num_idle_processes=1` because dev mode keeps zero
+warm processes and every call was paying ~1.5 s of cold start.
+
+The after-figures meet the ~200 ms target. Both sets are reported as
+measured; neither was adjusted toward the target. The `n` is small — three
+interruptions in one call — so this is a demonstrated range, not a
+statistical claim.
 
 ## Limitations
 
