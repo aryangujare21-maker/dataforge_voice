@@ -19,6 +19,7 @@ from livekit.agents import (
     AgentSession,
     ConversationItemAddedEvent,
     JobContext,
+    JobProcess,
     RunContext,
     UserInputTranscribedEvent,
     UserStateChangedEvent,
@@ -27,6 +28,12 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.agents.llm import ChatMessage, StopResponse
+from livekit.agents.voice.turn import (
+    EndpointingOptions,
+    InterruptionOptions,
+    PreemptiveGenerationOptions,
+    TurnHandlingOptions,
+)
 from livekit.plugins import deepgram, groq, rime, silero
 
 import tools
@@ -96,7 +103,7 @@ async def cancel_booking(context: RunContext) -> str:
     return f"Cancelled the {cancelled['day']} at {cancelled['time']} appointment."
 
 
-def _build_session() -> AgentSession:
+def _build_session(vad: silero.VAD) -> AgentSession:
     return AgentSession(
         stt=deepgram.STT(model="nova-3", language="en-US"),
         # Groq: free tier, no billing required, and fast enough to matter for
@@ -110,8 +117,31 @@ def _build_session() -> AgentSession:
         # which is what lets use_tts_aligned_transcript truncate the chat
         # history to what the caller actually heard on a barge-in.
         tts=rime.TTS(model="coda", speaker="lyra", lang="eng", use_websocket=True),
-        vad=silero.VAD.load(),
+        vad=vad,
         use_tts_aligned_transcript=True,
+        # The browser's echo canceller needs a moment to converge, and until
+        # it does the agent can hear itself and self-interrupt. The 3s
+        # default blocks the caller's first barge-in entirely -- which is
+        # the exact thing this demo is about. Short window + headphones.
+        aec_warmup_duration=0.5,
+        turn_handling=TurnHandlingOptions(
+            # Local Silero VAD only. The default turn detector and the
+            # "adaptive" interruption detector both call LiveKit Cloud
+            # (agent-gateway) per decision, with a 0.7s inference timeout --
+            # latency on every turn, and an outright failure mode when the
+            # network is slow (observed: both timed out mid-call).
+            turn_detection="vad",
+            interruption=InterruptionOptions(mode="vad", min_duration=0.2),
+            # Defaults wait up to 3s before committing a turn the model is
+            # unsure about. Our utterances are short and unambiguous (a day,
+            # a time, yes/no), so that ceiling is pure latency, not safety.
+            endpointing=EndpointingOptions(mode="fixed", min_delay=0.2, max_delay=0.8),
+            # Run Rime ahead of turn confirmation too, not just the LLM, so
+            # the first audio frame is ready the moment the turn commits.
+            preemptive_generation=PreemptiveGenerationOptions(
+                enabled=True, preemptive_tts=True
+            ),
+        ),
     )
 
 
@@ -147,11 +177,17 @@ def _wire_fencing_hooks(session: AgentSession) -> None:
             state.record_spoken(item.text_content or "", interrupted=item.interrupted)
 
 
+def prewarm(proc: JobProcess) -> None:
+    """Load the VAD model when the worker process starts, not when the first
+    call arrives -- otherwise the first caller pays for it mid-conversation."""
+    proc.userdata["vad"] = silero.VAD.load()
+
+
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
 
     state.reset()
-    session = _build_session()
+    session = _build_session(ctx.proc.userdata["vad"])
     _wire_fencing_hooks(session)
 
     await session.start(
@@ -161,4 +197,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    # dev mode keeps 0 idle processes by default, so every call pays ~1.5s to
+    # spawn a process and load the VAD model before the caller is even heard.
+    # One warm spare removes that from the first call.
+    cli.run_app(
+        WorkerOptions(entrypoint_fnc=entrypoint, prewarm_fnc=prewarm, num_idle_processes=1)
+    )

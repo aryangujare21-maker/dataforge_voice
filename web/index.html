@@ -3,84 +3,264 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Clinic Booking Line</title>
+<title>Clinic Uplink — Voice Triage</title>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <style>
-  :root { color-scheme: dark; }
+  :root {
+    color-scheme: dark;
+    --bg: #040706;
+    --panel: #080e0b;
+    --panel-2: #0b1310;
+    --line: #14261d;
+    --line-hot: #1d4433;
+    --green: #00ff9c;
+    --green-dim: #12b877;
+    --green-deep: #0a6b47;
+    --amber: #ffb43a;
+    --red: #ff4d4d;
+    --text: #c8e6d8;
+    --muted: #4f7a67;
+    --faint: #2d4a3c;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  }
+
   * { box-sizing: border-box; }
+
   body {
-    margin: 0; padding: 24px; background: #0b0d12; color: #e6e8ec;
-    font: 15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: #8a8f98; margin: 0 0 20px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 1000px; }
-  .card {
-    background: #141821; border: 1px solid #232936; border-radius: 10px;
-    padding: 16px;
+
+  /* ambient grid + radial bloom, the "console glow" */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(0,255,156,.10), transparent 70%),
+      radial-gradient(ellipse 600px 400px at 90% 110%, rgba(0,255,156,.05), transparent 70%),
+      linear-gradient(rgba(0,255,156,.022) 1px, transparent 1px) 0 0 / 100% 44px,
+      linear-gradient(90deg, rgba(0,255,156,.022) 1px, transparent 1px) 0 0 / 44px 100%;
+    z-index: 0;
   }
-  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #8a8f98; margin: 0 0 12px; }
+  /* CRT scanlines + vignette */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    background:
+      repeating-linear-gradient(to bottom, rgba(0,0,0,.16) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%);
+    mix-blend-mode: multiply;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 0 24px 64px; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; }
+  .brand-mark {
+    width: 30px; height: 30px; flex: none; display: grid; place-items: center;
+    border: 1px solid var(--green-deep); border-radius: 3px;
+    background: linear-gradient(160deg, rgba(0,255,156,.16), transparent);
+    color: var(--green); font-size: 15px; font-weight: 700;
+    box-shadow: 0 0 14px rgba(0,255,156,.22), inset 0 0 10px rgba(0,255,156,.08);
+  }
+  .brand-name { font-weight: 700; letter-spacing: .13em; font-size: 13px; color: #eafff5; }
+  .brand-sub { font-size: 10px; letter-spacing: .2em; color: var(--muted); }
+  .sysline { display: flex; align-items: center; gap: 18px; font-size: 10.5px; letter-spacing: .16em; color: var(--muted); }
+  .sysline b { color: var(--green-dim); font-weight: 600; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 52px 0 34px; text-align: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: 10.5px; letter-spacing: .26em; color: var(--green-dim);
+    border: 1px solid var(--line-hot); border-radius: 999px;
+    padding: 6px 15px; background: rgba(0,255,156,.04);
+  }
+  h1 {
+    margin: 20px 0 0;
+    font-size: clamp(30px, 5.6vw, 58px);
+    line-height: 1.04; font-weight: 800; letter-spacing: -.02em;
+    color: #f2fff9;
+    text-shadow: 0 0 34px rgba(0,255,156,.28);
+  }
+  h1 .accent {
+    color: var(--green);
+    text-shadow: 0 0 26px rgba(0,255,156,.55);
+  }
+  .lede {
+    margin: 18px auto 0; max-width: 620px;
+    color: var(--muted); font-size: 13.5px; line-height: 1.7;
+  }
+
+  /* ---------- console (connect) ---------- */
+  .console {
+    margin: 30px auto 0; display: flex; align-items: center; justify-content: center;
+    gap: 16px; flex-wrap: wrap;
+  }
+  button#connectBtn {
+    font-family: var(--mono);
+    font-size: 12px; font-weight: 700; letter-spacing: .18em;
+    color: #021a12; background: linear-gradient(180deg, var(--green), var(--green-dim));
+    border: none; border-radius: 999px; padding: 13px 30px; cursor: pointer;
+    box-shadow: 0 0 26px rgba(0,255,156,.4), inset 0 1px 0 rgba(255,255,255,.35);
+    transition: transform .12s ease, box-shadow .2s ease, filter .2s ease;
+  }
+  button#connectBtn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 38px rgba(0,255,156,.6); }
+  button#connectBtn:disabled { background: #10251c; color: var(--faint); box-shadow: none; cursor: default; }
+  #callStatus { font-size: 11.5px; letter-spacing: .12em; color: var(--muted); }
+
+  /* ---------- status strip ---------- */
+  .strip { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 26px; }
   .badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #1a2e22; color: #4ade80; border: 1px solid #2a4a36;
-    padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 10.5px; letter-spacing: .16em; font-weight: 600;
+    padding: 7px 14px; border-radius: 999px;
+    border: 1px solid var(--line-hot); background: rgba(0,255,156,.05); color: var(--green-dim);
   }
-  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
-  .fencing-off .badge { background: #331a1a; color: #f87171; border-color: #4a2a2a; }
-  .fencing-off .badge::before { background: #f87171; }
-  .booking { font-size: 22px; font-weight: 700; }
-  .booking.empty { font-size: 15px; font-weight: 400; color: #8a8f98; }
-  .log { max-height: 220px; overflow-y: auto; font-size: 13px; }
-  .log-row { padding: 8px 0; border-bottom: 1px solid #1c2230; }
-  .log-row:last-child { border-bottom: none; }
-  .log-row .meta { color: #8a8f98; font-size: 11px; }
-  .interrupted { color: #f59e0b; }
-  .fenced-desc { color: #f87171; }
-  .controls { margin: 20px 0; }
-  button {
-    background: #dc2626; color: white; border: none; padding: 10px 20px;
-    border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .badge.alert { border-color: rgba(255,77,77,.42); background: rgba(255,77,77,.07); color: var(--red); }
+
+  /* ---------- panel grid ---------- */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 34px; }
+  @media (max-width: 780px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    position: relative; padding: 18px 20px 20px;
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border: 1px solid var(--line);
+    border-radius: 4px;
   }
-  button:disabled { background: #3a3a3a; cursor: default; }
-  #callStatus { margin-left: 12px; color: #8a8f98; font-size: 13px; }
-  .empty-hint { color: #565b66; font-size: 13px; }
+  /* HUD corner brackets */
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
+    border-color: var(--green-deep); border-style: solid; border-width: 0;
+  }
+  .panel::before { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
+  .panel::after { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
+
+  .panel h2 {
+    margin: 0 0 3px; font-size: 10.5px; letter-spacing: .22em; font-weight: 700;
+    color: var(--green-dim);
+  }
+  .panel .hint { margin: 0 0 15px; font-size: 10.5px; letter-spacing: .05em; color: var(--faint); }
+
+  .readout { font-size: 27px; font-weight: 700; letter-spacing: -.01em; color: #eafff5; text-shadow: 0 0 22px rgba(0,255,156,.3); font-variant-numeric: tabular-nums; }
+  .readout.empty { font-size: 13px; font-weight: 400; color: var(--faint); letter-spacing: .1em; text-shadow: none; }
+  .readout .unit { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 5px; letter-spacing: .1em; }
+
+  /* ---------- logs ---------- */
+  .log { min-height: 168px; max-height: 210px; overflow-y: auto; margin: -4px -6px 0; padding: 0 6px; }
+  .log::-webkit-scrollbar { width: 5px; }
+  .log::-webkit-scrollbar-thumb { background: var(--line-hot); border-radius: 3px; }
+  .row { padding: 9px 0 9px 12px; border-bottom: 1px solid rgba(20,38,29,.7); position: relative; }
+  .row:last-child { border-bottom: none; }
+  .row::before {
+    content: ""; position: absolute; left: 0; top: 12px;
+    width: 4px; height: 4px; border-radius: 50%; background: var(--faint);
+  }
+  .row .body { font-size: 12px; line-height: 1.55; color: var(--text); word-break: break-word; }
+  .row .meta { font-size: 9.5px; letter-spacing: .14em; color: var(--faint); margin-top: 4px; }
+
+  .row.fenced::before { background: var(--red); box-shadow: 0 0 7px var(--red); }
+  .row.fenced .body { color: #ffb3b3; }
+  .row.cut::before { background: var(--amber); box-shadow: 0 0 7px var(--amber); }
+  .row.cut .body { color: #ffdca6; }
+  .tag {
+    display: inline-block; font-size: 9px; letter-spacing: .16em; font-weight: 700;
+    padding: 1px 6px; border-radius: 2px; margin-right: 7px; vertical-align: 1px;
+  }
+  .tag.red { background: rgba(255,77,77,.16); color: var(--red); border: 1px solid rgba(255,77,77,.3); }
+  .tag.amber { background: rgba(255,180,58,.14); color: var(--amber); border: 1px solid rgba(255,180,58,.28); }
+
+  .empty-hint { font-size: 11px; letter-spacing: .12em; color: var(--faint); padding: 10px 0; }
+
+  footer { margin-top: 30px; text-align: center; font-size: 10px; letter-spacing: .16em; color: var(--faint); }
 </style>
 </head>
 <body>
-  <h1>Clinic Booking Line</h1>
-  <p class="sub">Voice-only appointment booking. Speak after connecting.</p>
+<div class="wrap">
 
-  <div class="controls">
-    <button id="connectBtn">Connect mic</button>
-    <span id="callStatus">not connected</span>
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">▲</div>
+      <div>
+        <div class="brand-name">CLINIC UPLINK</div>
+        <div class="brand-sub">VOICE TRIAGE NODE</div>
+      </div>
+    </div>
+    <div class="sysline">
+      <span>NODE <b>01</b></span>
+      <span>CHANNEL <b>VOICE-ONLY</b></span>
+      <span>MODE <b>LIVE</b></span>
+    </div>
   </div>
 
-  <div id="providerRow" class="fencing-on" style="margin-bottom: 16px;">
-    <span class="badge" id="providerBadge">Speech provider: Rime (coda)</span>
-    <span class="badge" id="fencingBadge" style="margin-left: 8px;">Fencing: on</span>
+  <div class="hero">
+    <span class="eyebrow"><span class="dot"></span>SYSTEM ARMED</span>
+    <h1>Interrupt me.<br />It still books <span class="accent">the right slot.</span></h1>
+    <p class="lede">
+      A voice-only appointment line. Cut the agent off mid-sentence and change
+      your request — any lookup still in flight gets fenced and discarded
+      before it can be spoken or written.
+    </p>
+
+    <div class="console">
+      <button id="connectBtn">▸ OPEN CHANNEL</button>
+      <span id="callStatus">standby — channel closed</span>
+    </div>
+
+    <div class="strip" id="providerRow">
+      <span class="badge"><span class="dot"></span><span id="providerBadge">SPEECH · RIME CODA</span></span>
+      <span class="badge" id="fencingBadge"><span class="dot"></span>FENCING · ON</span>
+    </div>
   </div>
 
   <div class="grid">
-    <div class="card">
-      <h2>Current booking</h2>
-      <div id="booking" class="booking empty">No booking yet</div>
+    <div class="panel">
+      <h2>CONFIRMED SLOT</h2>
+      <p class="hint">the single write that matters</p>
+      <div id="booking" class="readout empty">NO BOOKING ON RECORD</div>
     </div>
 
-    <div class="card">
-      <h2>Barge-in latency</h2>
-      <div id="timing" class="empty-hint">No interruption yet</div>
+    <div class="panel">
+      <h2>BARGE-IN CUTOFF</h2>
+      <p class="hint">audio kill time after you talk over it</p>
+      <div id="timing" class="readout empty">NO INTERRUPT LOGGED</div>
     </div>
 
-    <div class="card">
-      <h2>Fenced events (dropped stale results)</h2>
-      <div id="fencedLog" class="log"><div class="empty-hint">None yet</div></div>
+    <div class="panel">
+      <h2>FENCED SIGNALS</h2>
+      <p class="hint">stale results dropped — never spoken, never written</p>
+      <div id="fencedLog" class="log"><div class="empty-hint">CLEAR — NO STALE DATA</div></div>
     </div>
 
-    <div class="card">
-      <h2>Spoken log (what the caller actually heard)</h2>
-      <div id="spokenLog" class="log"><div class="empty-hint">None yet</div></div>
+    <div class="panel">
+      <h2>TRANSMISSION LOG</h2>
+      <p class="hint">what the caller actually heard</p>
+      <div id="spokenLog" class="log"><div class="empty-hint">NO TRANSMISSIONS</div></div>
     </div>
   </div>
+
+  <footer>SYNTHETIC DATA ONLY · NO REAL PATIENT RECORDS · PROTOTYPE</footer>
+</div>
 
 <script>
 const el = (id) => document.getElementById(id);
@@ -89,38 +269,49 @@ function fmtTime(ts) {
   return new Date(ts * 1000).toLocaleTimeString();
 }
 
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+
 function renderState(s) {
-  el("providerBadge").textContent = "Speech provider: " + s.provider;
+  el("providerBadge").textContent = "SPEECH · " + String(s.provider || "").toUpperCase();
 
   const fencingBadge = el("fencingBadge");
-  fencingBadge.textContent = "Fencing: " + (s.fencing_enabled ? "on" : "off");
-  el("providerRow").className = s.fencing_enabled ? "fencing-on" : "fencing-off";
+  const on = !!s.fencing_enabled;
+  fencingBadge.innerHTML = '<span class="dot"></span>FENCING · ' + (on ? "ON" : "OFF");
+  fencingBadge.className = on ? "badge" : "badge alert";
 
   const booking = el("booking");
   if (s.booking) {
-    booking.textContent = `${s.booking.day} at ${s.booking.time}`;
-    booking.classList.remove("empty");
+    booking.textContent = `${s.booking.day} · ${s.booking.time}`;
+    booking.className = "readout";
   } else {
-    booking.textContent = "No booking yet";
-    booking.classList.add("empty");
+    booking.textContent = "NO BOOKING ON RECORD";
+    booking.className = "readout empty";
   }
 
   const timing = el("timing");
   if (s.timing_events && s.timing_events.length) {
     const last = s.timing_events[s.timing_events.length - 1];
-    timing.textContent = `${last.barge_in_latency_ms.toFixed(0)} ms (audio stopped after interrupt)`;
-    timing.className = "";
+    timing.innerHTML = last.barge_in_latency_ms.toFixed(0) + '<span class="unit">MS</span>';
+    timing.className = "readout";
   }
 
   const fencedLog = el("fencedLog");
   fencedLog.innerHTML = (s.fenced_events && s.fenced_events.length)
-    ? s.fenced_events.map(e => `<div class="log-row"><div class="fenced-desc">${e.description}</div><div class="meta">${fmtTime(e.ts)}</div></div>`).join("")
-    : '<div class="empty-hint">None yet</div>';
+    ? s.fenced_events.map(e =>
+        `<div class="row fenced"><div class="body"><span class="tag red">DROPPED</span>${esc(e.description)}</div><div class="meta">${fmtTime(e.ts)}</div></div>`
+      ).join("")
+    : '<div class="empty-hint">CLEAR — NO STALE DATA</div>';
 
   const spokenLog = el("spokenLog");
   spokenLog.innerHTML = (s.spoken_log && s.spoken_log.length)
-    ? s.spoken_log.map(e => `<div class="log-row"><div class="${e.interrupted ? 'interrupted' : ''}">${e.text}${e.interrupted ? ' (cut off)' : ''}</div><div class="meta">${fmtTime(e.ts)}</div></div>`).join("")
-    : '<div class="empty-hint">None yet</div>';
+    ? s.spoken_log.map(e =>
+        `<div class="row ${e.interrupted ? "cut" : ""}"><div class="body">${e.interrupted ? '<span class="tag amber">CUT OFF</span>' : ""}${esc(e.text)}</div><div class="meta">${fmtTime(e.ts)}</div></div>`
+      ).join("")
+    : '<div class="empty-hint">NO TRANSMISSIONS</div>';
 }
 
 async function pollState() {
@@ -170,22 +361,24 @@ async function connect() {
     // subscribed track has to be explicitly attached to a playable element.
     room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
       if (track.kind === LivekitClient.Track.Kind.Audio) {
-        const el = track.attach();
-        el.id = "agentAudio";
-        document.body.appendChild(el);
+        const audioEl = track.attach();
+        audioEl.id = "agentAudio";
+        document.body.appendChild(audioEl);
       }
     });
     room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
-      track.detach().forEach((el) => el.remove());
+      track.detach().forEach((n) => n.remove());
     });
 
     status.textContent = "connecting...";
     await room.connect(tokenData.url, tokenData.token);
     await room.localParticipant.setMicrophoneEnabled(true);
-    status.textContent = "connected — speak now";
+    status.textContent = "▸ CHANNEL OPEN — SPEAK NOW";
+    btn.textContent = "▪ CHANNEL LIVE";
 
     room.on(LivekitClient.RoomEvent.Disconnected, () => {
-      status.textContent = "disconnected";
+      status.textContent = "channel closed";
+      btn.textContent = "▸ OPEN CHANNEL";
       btn.disabled = false;
     });
   } catch (e) {
