@@ -124,6 +124,22 @@
   }
   button#connectBtn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 0 38px rgba(0,255,156,.6); }
   button#connectBtn:disabled { background: #10251c; color: var(--faint); box-shadow: none; cursor: default; }
+
+  button.ghost {
+    font-family: var(--mono);
+    font-size: 11.5px; font-weight: 700; letter-spacing: .16em;
+    color: var(--green-dim); background: rgba(0,255,156,.05);
+    border: 1px solid var(--line-hot); border-radius: 999px;
+    padding: 12px 22px; cursor: pointer;
+    transition: color .15s ease, border-color .15s ease, background .15s ease, box-shadow .2s ease;
+  }
+  button.ghost:hover:not(:disabled) { border-color: var(--green-dim); box-shadow: 0 0 16px rgba(0,255,156,.18); }
+  button.ghost:disabled { color: var(--faint); border-color: var(--line); background: transparent; cursor: default; }
+  button.ghost.muted {
+    color: var(--red); border-color: rgba(255,77,77,.45); background: rgba(255,77,77,.08);
+  }
+  button.ghost.muted:hover { box-shadow: 0 0 16px rgba(255,77,77,.22); border-color: var(--red); }
+
   #callStatus { font-size: 11.5px; letter-spacing: .12em; color: var(--muted); }
 
   /* ---------- status strip ---------- */
@@ -224,6 +240,7 @@
 
     <div class="console">
       <button id="connectBtn">▸ OPEN CHANNEL</button>
+      <button id="micBtn" class="ghost" disabled>◉ MIC LIVE</button>
       <span id="callStatus">standby — channel closed</span>
     </div>
 
@@ -326,6 +343,29 @@ async function pollState() {
 pollState();
 
 let room = null;
+let micEnabled = true;
+
+function setMicButton(enabled, disabled) {
+  const btn = el("micBtn");
+  btn.textContent = enabled ? "◉ MIC LIVE" : "◌ MIC MUTED";
+  btn.classList.toggle("muted", !enabled);
+  btn.disabled = disabled;
+}
+
+async function toggleMic() {
+  if (!room) return;
+  const btn = el("micBtn");
+  btn.disabled = true;
+  try {
+    micEnabled = !micEnabled;
+    await room.localParticipant.setMicrophoneEnabled(micEnabled);
+    setMicButton(micEnabled, false);
+  } catch (e) {
+    console.error("mic toggle failed", e);
+    micEnabled = !micEnabled; // roll back, the track never changed state
+    setMicButton(micEnabled, false);
+  }
+}
 
 async function connect() {
   const btn = el("connectBtn");
@@ -372,23 +412,28 @@ async function connect() {
 
     status.textContent = "connecting...";
     await room.connect(tokenData.url, tokenData.token);
-    await room.localParticipant.setMicrophoneEnabled(true);
+    micEnabled = true;
+    await room.localParticipant.setMicrophoneEnabled(micEnabled);
     status.textContent = "▸ CHANNEL OPEN — SPEAK NOW";
     btn.textContent = "▪ CHANNEL LIVE";
+    setMicButton(true, false);
 
     room.on(LivekitClient.RoomEvent.Disconnected, () => {
       status.textContent = "channel closed";
       btn.textContent = "▸ OPEN CHANNEL";
       btn.disabled = false;
+      setMicButton(true, true);
     });
   } catch (e) {
     console.error("connect failed", e);
     status.textContent = "error: " + e.message;
     btn.disabled = false;
+    setMicButton(true, true);
   }
 }
 
 el("connectBtn").addEventListener("click", connect);
+el("micBtn").addEventListener("click", toggleMic);
 </script>
 </body>
 </html>
