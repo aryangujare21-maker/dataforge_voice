@@ -4,6 +4,12 @@ A voice-only appointment line. Callers book, reschedule, or cancel by
 speaking — there is no screen for the caller. Rime is the spoken output for
 every turn.
 
+**Demo recording:** `Delta2Alpha_DataForge.mp4`, included in the submission
+package alongside this repository.
+
+**Speech provider: Rime, model `coda`, speaker `lyra`** — full configuration
+in [Rime configuration](#rime-configuration).
+
 ## The problem this exists to prove
 
 When a caller interrupts mid-readback and changes their request, the
@@ -87,7 +93,7 @@ logs exactly that truncated text to `state.spoken_log` as the visible proof.
 | Language | `eng` |
 | Transport | WebSocket (`use_websocket=True`) — required for word-level timestamps |
 | Audio format | PCM, 22050 Hz (plugin default) |
-| Endpoint | Rime's default WS endpoint (plugin default; override via `base_url` in `agent.py` if deploying to a specific region) |
+| Endpoint | `wss://users-ws.rime.ai` (streaming). The HTTP endpoint `https://users.rime.ai/v1/rime-tts` is unused here — WebSocket is required for timestamps. Override with `base_url` in `agent.py` to target a specific region. |
 
 Verified against Rime's live catalog on 2026-09-08: `coda` has 253 voices
 listed, `lyra` is one of them. Re-check before recording if time has passed
@@ -100,6 +106,29 @@ curl -s -H "Authorization: Bearer $RIME_API_KEY" https://users.rime.ai/data/voic
 If the speaker or model name has changed, update `agent.py`'s
 `rime.TTS(model=..., speaker=..., lang=...)` call and this table together —
 don't let them drift apart.
+
+## Third-party services
+
+| Service | Role | Tier used |
+|---|---|---|
+| **Rime** (`coda`) | TTS — every spoken word | paid API key |
+| **LiveKit Cloud** | WebRTC rooms + agent worker dispatch | free dev project |
+| **Deepgram** (`nova-3`) | STT | free trial credit |
+| **Groq** (`openai/gpt-oss-120b`) | LLM — conversation + tool calling | free tier, no billing |
+
+Silero VAD and the turn detector run **locally**, not as a service — see
+"Failure behavior" for why that matters.
+
+## Failure behavior
+
+| Failure | What happens |
+|---|---|
+| **Rime unreachable** | The call fails. There is no fallback TTS provider — Rime is the only speech path, deliberately (a fallback would muddy the judged claim). |
+| **Deepgram slow/unreachable** | The plugin retries with backoff. Observed once at ~31s to connect; the caller hears nothing and speech in that window is lost, since STT is where transcripts originate. This is the single worst failure mode in the stack. |
+| **Groq unreachable / model retired** | The turn raises `APIStatusError` and the agent stays silent for that turn; the session survives. Hit this for real when Groq retired `llama-3.3-70b-versatile` (404). |
+| **LiveKit Cloud inference endpoints slow** | Previously fatal to the barge-in path. Now moot: turn detection and interruption both run on local Silero VAD, so neither can time out. This was a deliberate change — see RIME_EVIDENCE.md. |
+| **Caller disconnects mid-call** | `close_on_disconnect` ends the agent session; `state` persists in memory until the next call resets it. |
+| **Stale lookup returns after a barge-in** | Fenced and discarded — the entire point of the build. |
 
 ## Setup
 
