@@ -4,8 +4,9 @@ A voice-only appointment line. Callers book, reschedule, or cancel by
 speaking — there is no screen for the caller. Rime is the spoken output for
 every turn.
 
-**Demo recording:** `Delta2Alpha_DataForge.mp4`, included in the submission
-package alongside this repository.
+**Demo recording:**
+[Delta2Alpha_DataForge.mp4](https://drive.google.com/file/d/1KCpCmXSHp0hmMGO4aCjCP5hW0HUiMWd2/view?usp=drive_link)
+(Google Drive)
 
 **Speech provider: Rime, model `coda`, speaker `lyra`** — full configuration
 in [Rime configuration](#rime-configuration).
